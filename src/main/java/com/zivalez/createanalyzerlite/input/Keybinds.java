@@ -4,14 +4,16 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.zivalez.createanalyzerlite.CreateAnalyzerLite;
 import com.zivalez.createanalyzerlite.hud.OverlayRenderer;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.TickEvent;
 import org.lwjgl.glfw.GLFW;
 
 /**
  * Keybind definitions and registration.
+ * <p>
+ * Polls keys every client tick to trigger overlay actions.
  */
 public final class Keybinds {
     
@@ -41,6 +43,9 @@ public final class Keybinds {
         CATEGORY
     );
     
+    /**
+     * Register keybinds with NeoForge.
+     */
     public static void register(final RegisterKeyMappingsEvent event) {
         event.register(TOGGLE_OVERLAY);
         event.register(CYCLE_MODE);
@@ -49,25 +54,33 @@ public final class Keybinds {
         CreateAnalyzerLite.LOGGER.debug("Registered {} keybinds", 3);
         
         // Register tick handler for key polling
-        NeoForge.EVENT_BUS.addListener(Keybinds::onClientTick);
+        // Use client tick end to check keys once per frame
+        NeoForge.EVENT_BUS.addListener(Keybinds::onClientTickEnd);
     }
     
-    private static void onClientTick(final TickEvent.ClientTickEvent event) {
-        // Only check keys at END phase to avoid double-processing
-        if (event.phase != TickEvent.Phase.END) {
+    /**
+     * Poll keys at end of client tick.
+     * <p>
+     * NeoForge 21.1.x: Use lambda event listener instead of old TickEvent API.
+     */
+    private static void onClientTickEnd(final net.neoforged.neoforge.event.tick.ClientTickEvent.Post event) {
+        final Minecraft mc = Minecraft.getInstance();
+        
+        // Only poll when in-game (not in menu)
+        if (mc.player == null) {
             return;
         }
         
         // Check keys (using consumeClick to prevent spam)
-        if (TOGGLE_OVERLAY.consumeClick()) {
+        while (TOGGLE_OVERLAY.consumeClick()) {
             OverlayRenderer.toggleOverlay();
         }
         
-        if (CYCLE_MODE.consumeClick()) {
+        while (CYCLE_MODE.consumeClick()) {
             OverlayRenderer.cycleMode();
         }
         
-        if (LOCK_TARGET.consumeClick()) {
+        while (LOCK_TARGET.consumeClick()) {
             OverlayRenderer.toggleLock();
         }
     }
