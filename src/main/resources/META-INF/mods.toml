@@ -1,6 +1,7 @@
 modLoader = "javafml"
 loaderVersion = "[4,)"
 license = "${mod_license}"
+issueTrackerURL = "https://github.com/d1ts05/CreateAnalyzerLite/issues"
 
 [[mods]]
 modId = "${mod_id}"
@@ -10,8 +11,16 @@ authors = "${mod_author}"
 description = '''
 ${mod_description}
 Minimalist, informative design with theme, scale, and layout options.
+
+Features:
+• Real-time RPM, stress, and network metrics
+• Compact & Expanded display modes
+• Theme system (Light/Dark/Auto)
+• Performance optimized with caching
+• Works gracefully without Create mod
 '''
 logoFile = "logo.png"
+updateJSONURL = "https://raw.githubusercontent.com/d1ts05/CreateAnalyzerLite/main/update.json"
 
 [[dependencies.createanalyzerlite]]
 modId = "neoforge"

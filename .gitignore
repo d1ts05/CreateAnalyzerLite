@@ -18,11 +18,16 @@ bin/
 *.iws
 run/
 
+# VS Code
+.vscode/
+
 # macOS
 .DS_Store
+._*
 
 # Windows
 Thumbs.db
+Desktop.ini
 
 # Minecraft
 logs/
@@ -34,3 +39,6 @@ runs/
 
 # Config (local testing)
 config/createanalyzerlite-client.toml
+
+# Generated Resources
+src/generated/

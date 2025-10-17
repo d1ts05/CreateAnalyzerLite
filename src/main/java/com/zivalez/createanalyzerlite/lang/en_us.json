@@ -1,0 +1,23 @@
+{
+  "key.categories.createanalyzerlite": "CreateAnalyzerLite",
+  "key.createanalyzerlite.toggle_overlay": "Toggle Overlay",
+  "key.createanalyzerlite.cycle_mode": "Cycle Display Mode",
+  "key.createanalyzerlite.lock_target": "Lock Target",
+  
+  "createanalyzerlite.overlay.rpm": "RPM",
+  "createanalyzerlite.overlay.stress": "Stress",
+  "createanalyzerlite.overlay.capacity": "Capacity",
+  "createanalyzerlite.overlay.nodes": "Nodes",
+  "createanalyzerlite.overlay.approximate": "≈",
+  "createanalyzerlite.overlay.locked": "🔒",
+  
+  "createanalyzerlite.status.safe": "Safe",
+  "createanalyzerlite.status.warning": "Warning",
+  "createanalyzerlite.status.overloaded": "Overloaded",
+  
+  "createanalyzerlite.config.title": "CreateAnalyzerLite Config",
+  "createanalyzerlite.config.ui": "UI Settings",
+  "createanalyzerlite.config.content": "Content Display",
+  "createanalyzerlite.config.behaviour": "Behaviour",
+  "createanalyzerlite.config.perf": "Performance"
+}

@@ -21,6 +21,9 @@ repositories {
     maven {
         name = "Create"
         url = "https://maven.tterrag.com/"
+        content {
+            includeGroup "com.simibubi.create"
+        }
     }
 }
 
@@ -28,8 +31,8 @@ dependencies {
     implementation "net.neoforged:neoforge:${neoforge_version}"
     
     // Create (optional dependency)
-    compileOnly "com.simibubi.create:create-${minecraft_version}:0.5.1.i:slim"
-    runtimeOnly "com.simibubi.create:create-${minecraft_version}:0.5.1.i:slim"
+    compileOnly "com.simibubi.create:create-${minecraft_version}:${create_version}:slim"
+    runtimeOnly "com.simibubi.create:create-${minecraft_version}:${create_version}:slim"
 }
 
 runs {
@@ -37,6 +40,19 @@ runs {
         workingDirectory project.file('run')
         
         property 'forge.logging.console.level', 'debug'
+        property 'forge.logging.markers', 'REGISTRIES'
+        
+        mods {
+            "${mod_id}" {
+                source sourceSets.main
+            }
+        }
+    }
+    
+    data {
+        workingDirectory project.file('run')
+        
+        args '--mod', mod_id, '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
         
         mods {
             "${mod_id}" {
@@ -46,8 +62,11 @@ runs {
     }
 }
 
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+    options.release = 21
 }
 
 processResources {
@@ -59,7 +78,8 @@ processResources {
         mod_license: mod_license,
         mod_description: mod_description,
         neoforge_version: neoforge_version,
-        minecraft_version: minecraft_version
+        minecraft_version: minecraft_version,
+        create_version: create_version
     ]
     
     inputs.properties(expandProps)
@@ -77,7 +97,10 @@ jar {
             "Specification-Version": "1",
             "Implementation-Title": mod_name,
             "Implementation-Version": mod_version,
-            "Implementation-Vendor": mod_author
+            "Implementation-Vendor": mod_author,
+            "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
         ])
     }
+    
+    finalizedBy 'reobfJar'
 }
