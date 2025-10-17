@@ -8,6 +8,7 @@ import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.tick.LevelTickEvent;  // ✅ CORRECT for NeoForge 21.1.x
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -53,20 +54,25 @@ public final class Keybinds {
         
         CreateAnalyzerLite.LOGGER.debug("Registered {} keybinds", 3);
         
-        // Register tick handler for key polling
-        // Use client tick end to check keys once per frame
-        NeoForge.EVENT_BUS.addListener(Keybinds::onClientTickEnd);
+        // Register client tick handler for key polling
+        // Use LevelTickEvent.Post (client-side) as workaround
+        NeoForge.EVENT_BUS.addListener(Keybinds::onClientLevelTickEnd);
     }
     
     /**
-     * Poll keys at end of client tick.
+     * Poll keys at end of client level tick.
      * <p>
-     * NeoForge 21.1.x: Use lambda event listener instead of old TickEvent API.
+     * NeoForge 21.1.x workaround: Use LevelTickEvent.Post on client level.
      */
-    private static void onClientTickEnd(final net.neoforged.neoforge.event.tick.ClientTickEvent.Post event) {
+    private static void onClientLevelTickEnd(final LevelTickEvent.Post event) {
         final Minecraft mc = Minecraft.getInstance();
         
-        // Only poll when in-game (not in menu)
+        // Only poll on client-side level
+        if (!event.getLevel().isClientSide()) {
+            return;
+        }
+        
+        // Only poll when player exists (in-game)
         if (mc.player == null) {
             return;
         }
