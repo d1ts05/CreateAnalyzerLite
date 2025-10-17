@@ -1,0 +1,36 @@
+# Gradle
+.gradle/
+build/
+out/
+bin/
+
+# Eclipse
+*.launch
+.settings/
+.metadata/
+.classpath
+.project
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+run/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Minecraft
+logs/
+crash-reports/
+.mixin.out/
+
+# NeoForge
+runs/
+
+# Config (local testing)
+config/createanalyzerlite-client.toml
