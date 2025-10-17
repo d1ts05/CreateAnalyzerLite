@@ -7,7 +7,7 @@ import net.minecraft.client.KeyMapping;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.tick.ClientTickEvent;
+import net.neoforged.neoforge.event.TickEvent;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -52,7 +52,12 @@ public final class Keybinds {
         NeoForge.EVENT_BUS.addListener(Keybinds::onClientTick);
     }
     
-    private static void onClientTick(final ClientTickEvent.Post event) {
+    private static void onClientTick(final TickEvent.ClientTickEvent event) {
+        // Only check keys at END phase to avoid double-processing
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
+        
         // Check keys (using consumeClick to prevent spam)
         if (TOGGLE_OVERLAY.consumeClick()) {
             OverlayRenderer.toggleOverlay();
