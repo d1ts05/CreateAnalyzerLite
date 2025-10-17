@@ -1,7 +1,7 @@
-package com.zivalez.createanalyzer;
+package com.zivalez.createanalyzerlite;
 
-import com.zivalez.createanalyzer.config.ClientConfig;
-import com.zivalez.createanalyzer.platform.NeoForgeClientBus;
+import com.zivalez.createanalyzerlite.config.ClientConfig;
+import com.zivalez.createanalyzerlite.platform.NeoForgeClientBus;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -9,25 +9,23 @@ import net.neoforged.fml.config.ModConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Mod(CreateAnalyzer.MOD_ID)
-public final class CreateAnalyzer {
+@Mod(CreateAnalyzerLite.MOD_ID)
+public final class CreateAnalyzerLite {
     
-    public static final String MOD_ID = "createanalyzer";
-    public static final Logger LOGGER = LoggerFactory.getLogger("CreateAnalyzer");
+    public static final String MOD_ID = "createanalyzerlite";
+    public static final Logger LOGGER = LoggerFactory.getLogger("CreateAnalyzerLite");
     
-    public CreateAnalyzer(IEventBus modBus, ModContainer modContainer) {
-        LOGGER.info("Initializing CreateAnalyzer...");
+    public CreateAnalyzerLite(IEventBus modBus, ModContainer modContainer) {
+        LOGGER.info("Initializing CreateAnalyzerLite...");
         
-        // Register client config
         modContainer.registerConfig(
             ModConfig.Type.CLIENT, 
             ClientConfig.SPEC,
-            "createanalyzer-client.toml"
+            "createanalyzerlite-client.toml"
         );
         
-        // Register client-side event handlers
         NeoForgeClientBus.register(modBus);
         
-        LOGGER.info("CreateAnalyzer initialized successfully!");
+        LOGGER.info("CreateAnalyzerLite initialized successfully!");
     }
 }

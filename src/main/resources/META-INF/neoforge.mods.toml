@@ -18,23 +18,22 @@ Features:
 • Performance optimized with caching
 • Works gracefully without Create mod
 '''
-logoFile = "logo.png"
 
-[[dependencies.createanalyzer]]
+[[dependencies.createanalyzerlite]]
 modId = "neoforge"
 type = "required"
 versionRange = "[21.0.0,)"
 ordering = "NONE"
 side = "CLIENT"
 
-[[dependencies.createanalyzer]]
+[[dependencies.createanalyzerlite]]
 modId = "minecraft"
 type = "required"
 versionRange = "[1.21.1,1.22)"
 ordering = "NONE"
 side = "CLIENT"
 
-[[dependencies.createanalyzer]]
+[[dependencies.createanalyzerlite]]
 modId = "create"
 type = "optional"
 versionRange = "[0.5.1,)"
