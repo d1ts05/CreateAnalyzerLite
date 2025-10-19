@@ -18,7 +18,9 @@ Features:
 • Performance optimized with caching
 • Works gracefully without Create mod
 '''
-displayURL="https://github.com/d1ts05/CreateAnalyzerLite"
+displayURL="https://modrinth.com/mod/create-analyzer-lite
+logoFile = "logo.png" 
+logoBlur = false
 
 [[dependencies.createanalyzerlite]]
 modId = "neoforge"
@@ -37,6 +39,6 @@ side = "CLIENT"
 [[dependencies.createanalyzerlite]]
 modId = "create"
 type = "optional"
-versionRange = "[0.5.1,)"
+versionRange = "[6.0.0,)"
 ordering = "NONE"
 side = "CLIENT"
