@@ -18,7 +18,7 @@ Features:
 • Performance optimized with caching
 • Works gracefully without Create mod
 '''
-displayURL="https://modrinth.com/mod/create-analyzer-lite
+displayURL="https://modrinth.com/mod/create-analyzer-lite"
 logoFile = "logo.png" 
 logoBlur = false
 
