@@ -1,150 +1,68 @@
 package com.zivalez.createanalyzerlite.hud;
 
-import com.zivalez.createanalyzerlite.config.ConfigData;
 import com.zivalez.createanalyzerlite.integration.create.KineticData;
-import com.zivalez.createanalyzerlite.util.ColorUtil;
-import com.zivalez.createanalyzerlite.util.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * Reusable UI widget components for overlay rendering.
- * <p>
- * Provides methods for drawing panels, bars, badges, icons, and text
- * with consistent styling.
- */
 public final class Widgets {
-    
-    /**
-     * Draw background panel with rounded corners.
-     */
-    public static void drawPanel(
-        final GuiGraphics gfx,
-        final int x,
-        final int y,
-        final int width,
-        final int height,
-        final Theme theme,
-        final ConfigData config
-    ) {
-        // Background
-        gfx.fill(x, y, x + width, y + height, theme.backgroundColor());
-        
-        // Border (optional, subtle)
-        final int borderColor = ColorUtil.withAlpha(theme.textColor(), 0.2);
-        gfx.fill(x, y, x + width, y + 1, borderColor); // Top
-        gfx.fill(x, y + height - 1, x + width, y + height, borderColor); // Bottom
-        gfx.fill(x, y, x + 1, y + height, borderColor); // Left
-        gfx.fill(x + width - 1, y, x + width, y + height, borderColor); // Right
+
+    public static void panel(final GuiGraphics gfx, final int x, final int y, final int w, final int h, final Theme theme, final int bgAlpha) {
+        gfx.fill(x, y, x + w, y + h, theme.panelBg(bgAlpha));
+        // border 1px
+        final int b = theme.panelBorder();
+        gfx.fill(x, y, x + w, y + 1, b);
+        gfx.fill(x, y + h - 1, x + w, y + h, b);
+        gfx.fill(x, y, x + 1, y + h, b);
+        gfx.fill(x + w - 1, y, x + w, y + h, b);
     }
-    
-    /**
-     * Draw stress progress bar with color coding.
-     */
-    public static void drawStressBar(
-        final GuiGraphics gfx,
-        final int x,
-        final int y,
-        final int width,
-        final int height,
-        final KineticData data,
-        final Theme theme
-    ) {
-        final float ratio = data.stressCapacity() > 0 
-            ? (float) (data.stressConsumption() / data.stressCapacity())
-            : 0.0f;
-        
-        final float clampedRatio = MathUtil.clamp(ratio, 0.0f, 1.0f);
-        final int fillWidth = (int) (width * clampedRatio);
-        
-        // Background (empty bar)
-        final int bgColor = ColorUtil.withAlpha(theme.textColor(), 0.2);
-        gfx.fill(x, y, x + width, y + height, bgColor);
-        
-        // Foreground (filled bar)
-        final int fillColor = getStressColor(clampedRatio, theme);
-        if (fillWidth > 0) {
-            gfx.fill(x, y, x + fillWidth, y + height, fillColor);
+
+    public static void text(final GuiGraphics gfx, final String s, final int x, final int y, final int color) {
+        gfx.drawString(Minecraft.getInstance().font, s, x, y, color, false);
+    }
+
+    public static void badge(final GuiGraphics gfx, final String s, final int x, final int y, final Theme theme) {
+        final var font = Minecraft.getInstance().font;
+        final int tw = font.width(s);
+        final int padX = 4, padY = 2;
+        final int w = tw + padX * 2;
+        final int h = font.lineHeight + padY * 2;
+        final int bg = (0x80 << 24) | (theme.textSecondary() & 0x00FFFFFF);
+        gfx.fill(x, y, x + w, y + h, bg);
+        gfx.drawString(font, s, x + padX, y + padY, theme.textPrimary(), false);
+    }
+
+    public static void stressBar(final GuiGraphics gfx, final int x, final int y, final int w, final int h, final KineticData kd, final Theme theme) {
+        gfx.fill(x, y, x + w, y + h, 0x40000000); // track
+        final double r = Math.max(0.0, kd.stressRatio());
+        final int fill = (int) Math.round(Math.min(1.0, r) * w);
+        final int col = r < 0.7 ? theme.stressSafe() : (r < 0.9 ? theme.stressWarn() : theme.stressDanger());
+        gfx.fill(x, y, x + fill, y + h, col);
+    }
+
+    /** One-line compact row: RPM · mini bar · Nodes [+ badges]. */
+    public static int compactRow(final GuiGraphics gfx, final int x, final int y, final int w, final Theme theme, final KineticData kd) {
+        final var font = Minecraft.getInstance().font;
+        int cx = x, cy = y;
+
+        final String rpm = String.format("RPM %s%d", kd.speed() < 0 ? "-" : "", Math.abs((int) kd.speed()));
+        text(gfx, rpm, cx, cy, theme.textPrimary());
+        cx += font.width(rpm) + 8;
+
+        final int barW = Math.max(40, w / 3);
+        stressBar(gfx, cx, cy + 2, barW, 6, kd, theme);
+        cx += barW + 8;
+
+        final String nodes = "Nodes " + kd.nodes();
+        text(gfx, nodes, cx, cy, theme.textSecondary());
+        cx += font.width(nodes) + 6;
+
+        if (kd.stressApproximate() || kd.nodesApproximate()) {
+            badge(gfx, "≈", cx, cy - 2, theme);
+            cx += font.width("≈") + 12;
         }
+        // lock icon text will be drawn by OverlayRenderer when needed
+        return font.lineHeight + 2;
     }
-    
-    /**
-     * Get stress bar color based on load ratio.
-     */
-    private static int getStressColor(final float ratio, final Theme theme) {
-        if (ratio < 0.7f) {
-            return theme.stressSafeColor(); // Green
-        } else if (ratio < 0.9f) {
-            return theme.stressWarningColor(); // Yellow/Orange
-        } else {
-            return theme.stressDangerColor(); // Red
-        }
-    }
-    
-    /**
-     * Draw text with font.
-     */
-    public static void drawText(
-        final GuiGraphics gfx,
-        final String text,
-        final int x,
-        final int y,
-        final int color
-    ) {
-        final Minecraft mc = Minecraft.getInstance();
-        gfx.drawString(mc.font, text, x, y, color, false);
-    }
-    
-    /**
-     * Draw label (muted text for field names).
-     */
-    public static void drawLabel(
-        final GuiGraphics gfx,
-        final String label,
-        final int x,
-        final int y,
-        final Theme theme
-    ) {
-        drawText(gfx, label, x, y, theme.mutedColor());
-    }
-    
-    /**
-     * Draw badge (small rounded rectangle with text).
-     */
-    public static void drawBadge(
-        final GuiGraphics gfx,
-        final String text,
-        final int x,
-        final int y,
-        final int bgColor,
-        final int textColor
-    ) {
-        final Minecraft mc = Minecraft.getInstance();
-        final int textWidth = mc.font.width(text);
-        final int badgeWidth = textWidth + 8;
-        final int badgeHeight = 12;
-        
-        // Background
-        gfx.fill(x, y, x + badgeWidth, y + badgeHeight, bgColor);
-        
-        // Text
-        gfx.drawString(mc.font, text, x + 4, y + 2, textColor, false);
-    }
-    
-    /**
-     * Draw icon (simple symbol/emoji).
-     */
-    public static void drawIcon(
-        final GuiGraphics gfx,
-        final String icon,
-        final int x,
-        final int y,
-        final int color
-    ) {
-        drawText(gfx, icon, x, y, color);
-    }
-    
-    private Widgets() {
-        throw new UnsupportedOperationException("Utility class");
-    }
+
+    private Widgets() { }
 }

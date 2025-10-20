@@ -1,90 +1,34 @@
 package com.zivalez.createanalyzerlite.hud;
 
 import com.zivalez.createanalyzerlite.config.ClientConfig;
-import com.zivalez.createanalyzerlite.config.ConfigData;
 
-/**
- * Layout calculation engine for overlay positioning.
- * <p>
- * Handles anchor points, offsets, and scaling to position the overlay
- * correctly on screen based on configuration.
- */
 public final class LayoutEngine {
-    
     private static final int COMPACT_BASE_WIDTH = 180;
-    private static final int EXPANDED_BASE_WIDTH = 220;
-    
-    /**
-     * Layout result with calculated position and dimensions.
-     */
-    public record Layout(int x, int y, int width, int height) {}
-    
-    /**
-     * Calculate layout for overlay based on config and screen dimensions.
-     * 
-     * @param config Configuration data
-     * @param screenWidth Screen width in scaled pixels
-     * @param screenHeight Screen height in scaled pixels
-     * @param mode Display mode
-     * @return Calculated layout
-     */
-    public static Layout calculate(
-        final ConfigData config,
-        final int screenWidth,
-        final int screenHeight,
-        final ClientConfig.DisplayMode mode
-    ) {
-        // Base dimensions (before scaling)
-        final int baseWidth = mode == ClientConfig.DisplayMode.COMPACT 
-            ? COMPACT_BASE_WIDTH 
-            : EXPANDED_BASE_WIDTH;
-        
-        // Apply scale (note: actual scaling happens in render transform)
-        final int width = baseWidth;
-        final int height = 100; // Dynamic based on content
-        
-        // Calculate anchor position
-        final int anchorX = calculateAnchorX(config.anchor(), screenWidth, width, config.scale());
-        final int anchorY = calculateAnchorY(config.anchor(), screenHeight, height, config.scale());
-        
-        // Apply offsets
-        final int finalX = anchorX + config.offsetX();
-        final int finalY = anchorY + config.offsetY();
-        
-        return new Layout(finalX, finalY, width, height);
+    private static final int EXPANDED_BASE_WIDTH = 240;
+
+    public static int baseWidth(final boolean expanded) {
+        return expanded ? EXPANDED_BASE_WIDTH : COMPACT_BASE_WIDTH;
     }
-    
-    /**
-     * Calculate X position based on anchor.
-     */
-    private static int calculateAnchorX(
-        final ClientConfig.Anchor anchor,
-        final int screenWidth,
-        final int width,
-        final double scale
-    ) {
+
+    public static int scaled(final int v, final double scale) {
+        return (int) Math.round(v * scale);
+    }
+
+    public static int computeX(final ClientConfig.Anchor anchor, final int screenWidth, final int width, final int offsetX, final double scale) {
+        final int w = (int) (width * scale);
         return switch (anchor) {
-            case TOP_LEFT, BOTTOM_LEFT -> 0;
-            case TOP_RIGHT, BOTTOM_RIGHT -> (int) (screenWidth - width * scale);
+            case TOP_LEFT, BOTTOM_LEFT -> Math.max(0, offsetX);
+            case TOP_RIGHT, BOTTOM_RIGHT -> Math.max(0, screenWidth - w - Math.max(0, offsetX));
         };
     }
-    
-    /**
-     * Calculate Y position based on anchor.
-     */
-    private static int calculateAnchorY(
-        final ClientConfig.Anchor anchor,
-        final int screenHeight,
-        final int height,
-        final double scale
-    ) {
+
+    public static int computeY(final ClientConfig.Anchor anchor, final int screenHeight, final int height, final int offsetY, final double scale) {
+        final int h = (int) (height * scale);
         return switch (anchor) {
-            case TOP_LEFT, TOP_RIGHT -> 0;
-            case BOTTOM_LEFT, BOTTOM_RIGHT -> (int) (screenHeight - height * scale);
+            case TOP_LEFT, TOP_RIGHT -> Math.max(0, offsetY);
+            case BOTTOM_LEFT, BOTTOM_RIGHT -> Math.max(0, screenHeight - h - Math.max(0, offsetY));
         };
     }
-    
-    private LayoutEngine() {
-        throw new UnsupportedOperationException("Utility class");
-    }
+
+    private LayoutEngine() { }
 }
