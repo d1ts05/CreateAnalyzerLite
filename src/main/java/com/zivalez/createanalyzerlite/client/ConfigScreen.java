@@ -358,15 +358,24 @@ public class ConfigScreen extends Screen {
 
     @Override
     public void render(final GuiGraphics gfx, final int mouseX, final int mouseY, final float partialTick) {
-        this.renderBackground(gfx);
+        // FIX: panggil overload yang benar (dengan mouseX, mouseY, partialTick)
+        this.renderBackground(gfx, mouseX, mouseY, partialTick);
+
         super.render(gfx, mouseX, mouseY, partialTick);
 
         // Title + Subtitle
         final int cx = this.width / 2;
         gfx.drawCenteredString(this.font, this.title, cx, 6, 0xFFFFFF);
-        final ConfigData cfg = ConfigData.fromSpec();
-        gfx.drawCenteredString(this.font,
-            Component.literal("Theme: " + cfg.theme() + " • Mode: " + cfg.defaultDisplayMode() + " • Scale: " + String.format("%.1f", cfg.scale())),
-            cx, 18, 0xA0A0A0);
+
+        final var cfg = com.zivalez.createanalyzerlite.config.ConfigData.fromSpec();
+        gfx.drawCenteredString(
+            this.font,
+            net.minecraft.network.chat.Component.literal(
+                "Theme: " + cfg.theme() +
+                " • Mode: " + cfg.defaultDisplayMode() +
+                " • Scale: " + String.format("%.1f", cfg.scale())
+            ),
+            cx, 18, 0xA0A0A0
+        );
     }
 }
