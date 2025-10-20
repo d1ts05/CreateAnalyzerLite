@@ -8,201 +8,185 @@ import com.zivalez.createanalyzerlite.integration.create.CreatePresent;
 import com.zivalez.createanalyzerlite.integration.create.KineticData;
 import com.zivalez.createanalyzerlite.integration.create.KineticQuery;
 import com.zivalez.createanalyzerlite.probe.TargetSelector;
-import com.zivalez.createanalyzerlite.util.Cache;
-import com.zivalez.createanalyzerlite.util.ColorUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
-import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
 
 import javax.annotation.Nullable;
 
 /**
- * Main overlay renderer for CreateAnalyzerLite HUD.
+ * Overlay renderer (UI-only adjustments).
+ * Uses existing helper APIs:
+ *  - Theme.resolve(cfg)
+ *  - Widgets.panel/text/stressBar/badge
+ *  - LayoutEngine.baseWidth/computeX/computeY
+ *
+ * Default display mode will follow config.defaultDisplayMode (set to EXPANDED by default via ClientConfig).
  */
 public final class OverlayRenderer {
 
     private static boolean overlayEnabled = true;
 
-    // ✅ Default to EXPANDED (request)
-    private static ClientConfig.DisplayMode currentMode = ClientConfig.DisplayMode.EXPANDED;
-
-    // TTL cache (~1s). Actual expiry handled via put(currentTick).
-    private static final Cache<KineticData> dataCache = new Cache<>(20);
-    private static long lastSampleTick = 0L;
+    // Lazy-init from config so it truly follows defaultDisplayMode
+    @Nullable
+    private static ClientConfig.DisplayMode currentMode = null;
 
     @Nullable
     private static BlockPos lockedTarget = null;
 
+    // Simple throttle + last snapshot (no custom Cache type)
+    private static long lastSampleTick = 0L;
+    @Nullable
+    private static KineticData lastData = null;
+
     @SubscribeEvent
-    public static void onRenderGuiLayer(final RenderGuiLayerEvent.Post event) {
-        // Render after crosshair so it sits above vanilla HUD
-        if (!event.getName().equals(VanillaGuiLayers.CROSSHAIR)) return;
+    public static void onRenderGui(final RenderGuiEvent.Post evt) {
         if (!overlayEnabled) return;
         if (!CreatePresent.isLoaded()) return;
 
         final Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
 
-        final ConfigData config = ConfigData.fromSpec();
-        if (config.hideInMenus() && mc.screen != null) return;
-        if (!config.hasAnyContent()) return;
+        final ConfigData cfg = ConfigData.fromSpec();
+        if (cfg.hideInMenus() && mc.screen != null) return;
+        if (!cfg.hasAnyContent()) return;
 
-        // Target (locked → raycast)
+        if (currentMode == null) {
+            // respect config default (we set EXPANDED as default in ClientConfig)
+            currentMode = cfg.defaultDisplayMode();
+        }
+
+        // Resolve target: locked first, else raycast
         final BlockEntity target = (lockedTarget != null)
             ? mc.level.getBlockEntity(lockedTarget)
             : TargetSelector.getTargetedKineticBlock(mc);
+
         if (target == null) return;
 
-        // Data (throttled + cached)
-        final KineticData data = queryKineticData(target, mc, config);
-        if (data == null) return;
+        // Kinetic data with throttling
+        final KineticData kd = queryKineticData(target, mc, cfg);
+        if (kd == null) return;
 
-        renderOverlay(event.getGuiGraphics(), data, config, mc);
+        renderOverlay(evt.getGuiGraphics(), kd, cfg, mc);
     }
 
     @Nullable
-    private static KineticData queryKineticData(final BlockEntity target, final Minecraft mc, final ConfigData config) {
-        final long currentTick = mc.level.getGameTime();
+    private static KineticData queryKineticData(final BlockEntity target, final Minecraft mc, final ConfigData cfg) {
+        final long now = mc.level.getGameTime();
 
-        // Cache hit?
-        final KineticData cached = dataCache.get(currentTick);
-        if (cached != null) return cached;
-
-        // Throttle
-        if (currentTick - lastSampleTick < config.sampleEveryTicks()) return null;
-        lastSampleTick = currentTick;
-
-        // Fresh query
-        final KineticData fresh = KineticQuery.query(target, config);
-        if (fresh != null) {
-            dataCache.put(fresh, currentTick);
+        // Throttle: reuse last snapshot within sampleEveryTicks window
+        if (lastData != null && (now - lastSampleTick) < cfg.sampleEveryTicks()) {
+            return lastData;
         }
+
+        final KineticData fresh = KineticQuery.query(target, cfg);
+        lastData = fresh;
+        lastSampleTick = now;
         return fresh;
     }
 
-    private static void renderOverlay(final GuiGraphics gfx, final KineticData data, final ConfigData config, final Minecraft mc) {
+    private static void renderOverlay(final GuiGraphics gfx, final KineticData kd, final ConfigData cfg, final Minecraft mc) {
         final PoseStack pose = gfx.pose();
         pose.pushPose();
         try {
-            final Theme theme = Theme.fromConfig(config);
+            final Theme theme = Theme.resolve(cfg);
 
-            // Layout
-            final LayoutEngine.Layout layout = LayoutEngine.calculate(
-                config,
-                mc.getWindow().getGuiScaledWidth(),
-                mc.getWindow().getGuiScaledHeight(),
-                currentMode
-            );
+            final boolean expanded = (currentMode == ClientConfig.DisplayMode.EXPANDED);
+            final int baseW = LayoutEngine.baseWidth(expanded);
+            final int panelH = expanded ? 64 : 18;
+            final int pad = cfg.padding();
 
-            // Transform
-            pose.translate(layout.x(), layout.y(), 0);
-            pose.scale((float) config.scale(), (float) config.scale(), 1.0f);
+            final int screenW = mc.getWindow().getGuiScaledWidth();
+            final int screenH = mc.getWindow().getGuiScaledHeight();
 
-            if (currentMode == ClientConfig.DisplayMode.EXPANDED) {
-                renderExpanded(gfx, data, config, theme, layout);
+            final int x = LayoutEngine.computeX(cfg.anchor(), screenW, baseW, cfg.offsetX(), cfg.scale());
+            final int y = LayoutEngine.computeY(cfg.anchor(), screenH, panelH, cfg.offsetY(), cfg.scale());
+
+            pose.translate(x, y, 0);
+            pose.scale((float) cfg.scale(), (float) cfg.scale(), 1.0f);
+
+            // Panel background
+            Widgets.panel(gfx, 0, 0, baseW, panelH, theme, cfg.opacity());
+
+            if (expanded) {
+                drawExpanded(gfx, kd, theme, baseW, pad);
             } else {
-                renderCompact(gfx, data, config, theme, layout);
+                drawCompact(gfx, kd, theme, baseW, pad);
             }
         } finally {
             pose.popPose();
         }
     }
 
-    /** Compact: RPM · mini stress bar · Nodes + badges (≈/🔒) */
-    private static void renderCompact(
-        final GuiGraphics gfx,
-        final KineticData data,
-        final ConfigData config,
-        final Theme theme,
-        final LayoutEngine.Layout layout
-    ) {
-        final int pad = config.padding();
-        final int panelH = 18;
-        Widgets.drawPanel(gfx, 0, 0, layout.width(), panelH, theme, config);
-
+    /** COMPACT: "RPM · mini stress bar · Nodes" + badges (≈ / 🔒) */
+    private static void drawCompact(final GuiGraphics gfx, final KineticData kd, final Theme theme, final int width, final int pad) {
         int x = pad;
-        int y = pad - 1;
+        final int y = pad - 1;
 
-        // RPM
-        final int rpmAbs = Math.abs((int) data.speed());
-        final String rpm = "RPM " + (data.speed() < 0 ? "-" : "") + rpmAbs;
-        Widgets.drawText(gfx, rpm, x, y, theme.textColor());
+        // RPM (stable text width not enforced here to avoid extra helpers)
+        final int rpmAbs = Math.abs((int) kd.speed());
+        final String rpm = "RPM " + (kd.speed() < 0 ? "-" : "") + rpmAbs;
+        Widgets.text(gfx, rpm, x, y, theme.textPrimary());
         x += Minecraft.getInstance().font.width(rpm) + 8;
 
-        // mini stress bar
-        final int barW = Math.max(40, layout.width() / 3);
-        Widgets.drawStressBar(gfx, x, y + 2, barW, 6, data, theme);
+        // Mini stress bar
+        final int barW = Math.max(40, width / 3);
+        Widgets.stressBar(gfx, x, y + 2, barW, 6, kd, theme);
         x += barW + 8;
 
         // Nodes
-        final String nodes = "Nodes " + data.nodes();
-        Widgets.drawText(gfx, nodes, x, y, theme.mutedColor());
+        final String nodes = "Nodes " + kd.nodes();
+        Widgets.text(gfx, nodes, x, y, theme.textSecondary());
         x += Minecraft.getInstance().font.width(nodes) + 6;
 
         // Badges
-        final boolean approx = data.stressApproximate() || data.nodesApproximate();
-        if (approx) {
-            final int bg = ColorUtil.withAlpha(theme.accentColor(), 0.25);
-            Widgets.drawBadge(gfx, "≈", x, y - 2, bg, theme.textColor());
+        if (kd.stressApproximate() || kd.nodesApproximate()) {
+            Widgets.badge(gfx, "≈", x, y - 2, theme);
             x += 14;
         }
         if (lockedTarget != null) {
-            final int bg = ColorUtil.withAlpha(theme.textColor(), 0.25);
-            Widgets.drawBadge(gfx, "🔒", x, y - 2, bg, theme.textColor());
+            Widgets.badge(gfx, "🔒", x, y - 2, theme);
         }
     }
 
-    /** Expanded: RPM header, full-width stress bar, Capacity + Nodes rows, approx & lock badges */
-    private static void renderExpanded(
-        final GuiGraphics gfx,
-        final KineticData data,
-        final ConfigData config,
-        final Theme theme,
-        final LayoutEngine.Layout layout
-    ) {
-        final int pad = config.padding();
-        final int panelH = 64;
-        Widgets.drawPanel(gfx, 0, 0, layout.width(), panelH, theme, config);
-
+    /** EXPANDED: Header RPM, full-width stress bar, Capacity & Nodes, badges top-right */
+    private static void drawExpanded(final GuiGraphics gfx, final KineticData kd, final Theme theme, final int width, final int pad) {
         int y = pad;
 
         // Header RPM
-        final int rpmAbs = Math.abs((int) data.speed());
-        final String rpm = "RPM " + (data.speed() < 0 ? "-" : "") + rpmAbs;
-        Widgets.drawText(gfx, rpm, pad, y, theme.titleColor());
+        final int rpmAbs = Math.abs((int) kd.speed());
+        final String rpm = "RPM " + (kd.speed() < 0 ? "-" : "") + rpmAbs;
+        Widgets.text(gfx, rpm, pad, y, theme.textPrimary());
         y += 12;
 
-        // Stress bar
-        Widgets.drawStressBar(gfx, pad, y, layout.width() - pad * 2, 8, data, theme);
+        // Stress bar full width
+        Widgets.stressBar(gfx, pad, y, width - pad * 2, 8, kd, theme);
         y += 14;
 
-        // Capacity (left) + Nodes (right)
-        final String capacity = "Capacity " + (int) data.stressCapacity();
-        Widgets.drawText(gfx, capacity, pad, y, theme.mutedColor());
+        // Capacity (left)
+        final String capacity = "Capacity " + (int) kd.stressCapacity();
+        Widgets.text(gfx, capacity, pad, y, theme.textSecondary());
 
-        final String nodes = "Nodes " + data.nodes();
-        final int nodesX = layout.width() - pad - Minecraft.getInstance().font.width(nodes);
-        Widgets.drawText(gfx, nodes, nodesX, y, theme.mutedColor());
+        // Nodes (right)
+        final String nodes = "Nodes " + kd.nodes();
+        final int nodesX = width - pad - Minecraft.getInstance().font.width(nodes);
+        Widgets.text(gfx, nodes, nodesX, y, theme.textSecondary());
 
         // Badges (top-right)
-        int badgeX = layout.width() - pad - 16;
-        if (data.stressApproximate() || data.nodesApproximate()) {
-            final int bg = ColorUtil.withAlpha(theme.accentColor(), 0.25);
-            Widgets.drawBadge(gfx, "≈", badgeX, pad - 2, bg, theme.textColor());
+        int badgeX = width - pad - 16;
+        if (kd.stressApproximate() || kd.nodesApproximate()) {
+            Widgets.badge(gfx, "≈", badgeX, pad - 2, theme);
             badgeX -= 18;
         }
         if (lockedTarget != null) {
-            final int bg = ColorUtil.withAlpha(theme.textColor(), 0.25);
-            Widgets.drawBadge(gfx, "🔒", badgeX, pad - 2, bg, theme.textColor());
+            Widgets.badge(gfx, "🔒", badgeX, pad - 2, theme);
         }
     }
 
-    // === Keybind actions (used by Keybinds) ===
-
+    // ====== Keybind hooks (called from Keybinds) ======
     public static void toggleOverlay() {
         overlayEnabled = !overlayEnabled;
         CreateAnalyzerLite.LOGGER.info("Overlay: {}", overlayEnabled ? "ON" : "OFF");
