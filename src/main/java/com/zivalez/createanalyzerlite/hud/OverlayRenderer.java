@@ -18,26 +18,23 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import javax.annotation.Nullable;
 
 /**
- * Overlay renderer (UI-only adjustments).
- * Uses existing helper APIs:
- *  - Theme.resolve(cfg)
- *  - Widgets.panel/text/stressBar/badge
- *  - LayoutEngine.baseWidth/computeX/computeY
- *
- * Default display mode will follow config.defaultDisplayMode (set to EXPANDED by default via ClientConfig).
+ * Overlay renderer (UI-only).
+ * - Uses existing helpers: Theme.resolve, Widgets.panel/text/stressBar/badge, LayoutEngine.*.
+ * - Default mode follows config (set default to EXPANDED in ClientConfig).
+ * - Compact: adaptive width (no overflow), dynamic panel height.
+ * - Expanded: adds Load% and clearer capacity line.
  */
 public final class OverlayRenderer {
 
     private static boolean overlayEnabled = true;
 
-    // Lazy-init from config so it truly follows defaultDisplayMode
     @Nullable
     private static ClientConfig.DisplayMode currentMode = null;
 
     @Nullable
     private static BlockPos lockedTarget = null;
 
-    // Simple throttle + last snapshot (no custom Cache type)
+    // Simple throttle snapshot
     private static long lastSampleTick = 0L;
     @Nullable
     private static KineticData lastData = null;
@@ -55,18 +52,15 @@ public final class OverlayRenderer {
         if (!cfg.hasAnyContent()) return;
 
         if (currentMode == null) {
-            // respect config default (we set EXPANDED as default in ClientConfig)
-            currentMode = cfg.defaultDisplayMode();
+            currentMode = cfg.defaultDisplayMode(); // default EXPANDED via ClientConfig
         }
 
-        // Resolve target: locked first, else raycast
         final BlockEntity target = (lockedTarget != null)
             ? mc.level.getBlockEntity(lockedTarget)
             : TargetSelector.getTargetedKineticBlock(mc);
 
         if (target == null) return;
 
-        // Kinetic data with throttling
         final KineticData kd = queryKineticData(target, mc, cfg);
         if (kd == null) return;
 
@@ -76,11 +70,7 @@ public final class OverlayRenderer {
     @Nullable
     private static KineticData queryKineticData(final BlockEntity target, final Minecraft mc, final ConfigData cfg) {
         final long now = mc.level.getGameTime();
-
-        // Throttle: reuse last snapshot within sampleEveryTicks window
-        if (lastData != null && (now - lastSampleTick) < cfg.sampleEveryTicks()) {
-            return lastData;
-        }
+        if (lastData != null && (now - lastSampleTick) < cfg.sampleEveryTicks()) return lastData;
 
         final KineticData fresh = KineticQuery.query(target, cfg);
         lastData = fresh;
@@ -93,14 +83,15 @@ public final class OverlayRenderer {
         pose.pushPose();
         try {
             final Theme theme = Theme.resolve(cfg);
-
             final boolean expanded = (currentMode == ClientConfig.DisplayMode.EXPANDED);
             final int baseW = LayoutEngine.baseWidth(expanded);
-            final int panelH = expanded ? 64 : 18;
             final int pad = cfg.padding();
 
             final int screenW = mc.getWindow().getGuiScaledWidth();
             final int screenH = mc.getWindow().getGuiScaledHeight();
+
+            // --- dynamic panel height (avoid overflow) ---
+            final int panelH = expanded ? calcExpandedHeight(pad) : calcCompactHeight(pad);
 
             final int x = LayoutEngine.computeX(cfg.anchor(), screenW, baseW, cfg.offsetX(), cfg.scale());
             final int y = LayoutEngine.computeY(cfg.anchor(), screenH, panelH, cfg.offsetY(), cfg.scale());
@@ -108,7 +99,6 @@ public final class OverlayRenderer {
             pose.translate(x, y, 0);
             pose.scale((float) cfg.scale(), (float) cfg.scale(), 1.0f);
 
-            // Panel background
             Widgets.panel(gfx, 0, 0, baseW, panelH, theme, cfg.opacity());
 
             if (expanded) {
@@ -121,61 +111,139 @@ public final class OverlayRenderer {
         }
     }
 
-    /** COMPACT: "RPM · mini stress bar · Nodes" + badges (≈ / 🔒) */
+    // ====== sizing helpers ======
+
+    private static int calcCompactHeight(final int pad) {
+        final int lh = Minecraft.getInstance().font.lineHeight; // text height
+        return Math.max(18, lh + pad * 2); // at least 18
+    }
+
+    private static int calcExpandedHeight(final int pad) {
+        final int lh = Minecraft.getInstance().font.lineHeight;
+        // header (lh) + gap(2) + bar(8) + gap(6) + row(lh) + pad*2
+        return lh + 2 + 8 + 6 + lh + pad * 2;
+    }
+
+    // ====== COMPACT ======
+
     private static void drawCompact(final GuiGraphics gfx, final KineticData kd, final Theme theme, final int width, final int pad) {
+        final var font = Minecraft.getInstance().font;
         int x = pad;
         final int y = pad - 1;
+        final int contentW = width - pad * 2;
 
-        // RPM (stable text width not enforced here to avoid extra helpers)
+        // text: RPM
         final int rpmAbs = Math.abs((int) kd.speed());
         final String rpm = "RPM " + (kd.speed() < 0 ? "-" : "") + rpmAbs;
-        Widgets.text(gfx, rpm, x, y, theme.textPrimary());
-        x += Minecraft.getInstance().font.width(rpm) + 8;
+        final int rpmW = font.width(rpm);
 
-        // Mini stress bar
-        final int barW = Math.max(40, width / 3);
-        Widgets.stressBar(gfx, x, y + 2, barW, 6, kd, theme);
+        // text: Nodes (may be ellipsized)
+        final String nodesFull = "Nodes " + kd.nodes();
+        int nodesW = font.width(nodesFull);
+
+        // reserve space for badges (≈ and 🔒) only if needed
+        final boolean approx = kd.stressApproximate() || kd.nodesApproximate();
+        final boolean locked = (lockedTarget != null);
+        final int badgesW = (approx ? 14 : 0) + (locked ? 14 : 0);
+
+        // compute bar width adaptively
+        int remaining = contentW - rpmW - 8 /*gap*/ - nodesW - 6 /*gap*/ - badgesW;
+        int barW = Math.max(32, Math.min(Math.max(40, contentW / 3), remaining));
+
+        // if still negative, shrink nodes text (ellipsis) or drop it
+        String nodesToDraw = nodesFull;
+        if (barW < 32) {
+            // try reduce nodes first
+            final int maxNodesW = Math.max(0, contentW - rpmW - 8 - 32 - 6 - badgesW);
+            if (maxNodesW <= 12) {
+                // no space for nodes at all
+                nodesToDraw = null;
+                nodesW = 0;
+                remaining = contentW - rpmW - 8 - badgesW;
+                barW = Math.max(32, remaining);
+            } else {
+                nodesToDraw = ellipsize(nodesFull, maxNodesW, font);
+                nodesW = font.width(nodesToDraw);
+                remaining = contentW - rpmW - 8 - nodesW - 6 - badgesW;
+                barW = Math.max(32, remaining);
+            }
+        }
+
+        // draw RPM
+        Widgets.text(gfx, rpm, x, y, theme.textPrimary());
+        x += rpmW + 8;
+
+        // draw bar
+        final int barY = y + 2;
+        Widgets.stressBar(gfx, x, barY, Math.max(0, barW), 6, kd, theme);
         x += barW + 8;
 
-        // Nodes
-        final String nodes = "Nodes " + kd.nodes();
-        Widgets.text(gfx, nodes, x, y, theme.textSecondary());
-        x += Minecraft.getInstance().font.width(nodes) + 6;
+        // draw nodes (if any)
+        if (nodesToDraw != null) {
+            Widgets.text(gfx, nodesToDraw, x, y, theme.textSecondary());
+            x += nodesW + 6;
+        }
 
-        // Badges
-        if (kd.stressApproximate() || kd.nodesApproximate()) {
+        // badges
+        if (approx) {
             Widgets.badge(gfx, "≈", x, y - 2, theme);
             x += 14;
         }
-        if (lockedTarget != null) {
+        if (locked) {
             Widgets.badge(gfx, "🔒", x, y - 2, theme);
         }
     }
 
-    /** EXPANDED: Header RPM, full-width stress bar, Capacity & Nodes, badges top-right */
+    // ellipsize helper (fits within maxW pixels)
+    private static String ellipsize(final String s, final int maxW, final net.minecraft.client.gui.Font font) {
+        if (font.width(s) <= maxW) return s;
+        final String ell = "...";
+        final int ellW = font.width(ell);
+        int lo = 0, hi = s.length();
+        while (lo < hi) {
+            final int mid = (lo + hi) >>> 1;
+            final String cut = s.substring(0, mid) + ell;
+            if (font.width(cut) <= maxW) lo = mid + 1;
+            else hi = mid;
+        }
+        final int take = Math.max(0, lo - 1);
+        return (take <= 0) ? ell : s.substring(0, take) + ell;
+    }
+
+    // ====== EXPANDED ======
+
     private static void drawExpanded(final GuiGraphics gfx, final KineticData kd, final Theme theme, final int width, final int pad) {
+        final var font = Minecraft.getInstance().font;
         int y = pad;
 
-        // Header RPM
+        // RPM header
         final int rpmAbs = Math.abs((int) kd.speed());
         final String rpm = "RPM " + (kd.speed() < 0 ? "-" : "") + rpmAbs;
         Widgets.text(gfx, rpm, pad, y, theme.textPrimary());
-        y += 12;
+        y += font.lineHeight + 2;
 
-        // Stress bar full width
-        Widgets.stressBar(gfx, pad, y, width - pad * 2, 8, kd, theme);
-        y += 14;
+        // Stress bar full-width
+        final int barW = width - pad * 2;
+        Widgets.stressBar(gfx, pad, y, barW, 8, kd, theme);
 
-        // Capacity (left)
-        final String capacity = "Capacity " + (int) kd.stressCapacity();
+        // Load % (right-aligned above/beside the bar)
+        final int pct = (int) Math.round(Math.max(0, Math.min(1, kd.stressRatio())) * 100.0);
+        final String loadPct = pct + "%";
+        final int pctX = pad + barW - font.width(loadPct);
+        Widgets.text(gfx, loadPct, pctX, y - 1, theme.textSecondary());
+
+        y += 8 + 6;
+
+        // Capacity & Nodes on one row
+        final int capacityInt = (int) Math.max(0, kd.stressRatio() * (kd.stressCapacity() <= 0 ? 0 : kd.stressCapacity()));
+        final String capacity = "Load " + capacityInt + " / " + (int) kd.stressCapacity();
         Widgets.text(gfx, capacity, pad, y, theme.textSecondary());
 
-        // Nodes (right)
         final String nodes = "Nodes " + kd.nodes();
-        final int nodesX = width - pad - Minecraft.getInstance().font.width(nodes);
+        final int nodesX = width - pad - font.width(nodes);
         Widgets.text(gfx, nodes, nodesX, y, theme.textSecondary());
 
-        // Badges (top-right)
+        // badges top-right
         int badgeX = width - pad - 16;
         if (kd.stressApproximate() || kd.nodesApproximate()) {
             Widgets.badge(gfx, "≈", badgeX, pad - 2, theme);
@@ -186,7 +254,7 @@ public final class OverlayRenderer {
         }
     }
 
-    // ====== Keybind hooks (called from Keybinds) ======
+    // ====== keybind hooks ======
     public static void toggleOverlay() {
         overlayEnabled = !overlayEnabled;
         CreateAnalyzerLite.LOGGER.info("Overlay: {}", overlayEnabled ? "ON" : "OFF");
